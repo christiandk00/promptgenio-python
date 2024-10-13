@@ -1,8 +1,3 @@
-import json
-import requests
-import logging
-from groq import Groq
-
 class PromptGenio:
     def __init__(self, groq_api_key, promptgenio_api_key, tags=None):
         self.client = Groq(api_key=groq_api_key)
@@ -10,12 +5,16 @@ class PromptGenio:
         self.webhook_url = "https://promptgenio.com/api/prompt-logs"
         self.promptgenio_api_key = promptgenio_api_key
         self.tags = tags or {}
-        self.latest_log_id = None  # Store the latest log ID
+        self.latest_log = None  # Store the latest PromptLog instance
 
     def chat_completion(self, messages, **kwargs):
+        # Clear previous additional tags before making a new request
+        if self.latest_log:
+            self.latest_log.clear_tags()
+
         try:
             response = self.client.chat.completions.create(messages=messages, **kwargs)
-            self._log_success(messages, response)
+            self.latest_log = self._log_success(messages, response)  # Capture the PromptLog instance
             return response
         except Exception as e:
             self._log_error(messages, str(e))
@@ -28,7 +27,9 @@ class PromptGenio:
             "response": response.model_dump(),
             "tags": self.tags
         }
-        self.latest_log_id = self._send_log(log_data)  # Capture the log ID
+
+        log_id = self._send_log(log_data)  # Capture the log ID
+        return PromptLog(log_id=log_id, api_key=self.promptgenio_api_key)  # Return a PromptLog instance
 
     def _log_error(self, messages, error):
         log_data = {
@@ -37,7 +38,9 @@ class PromptGenio:
             "error": error,
             "tags": self.tags
         }
-        self.latest_log_id = self._send_log(log_data)  # Capture the log ID
+
+        log_id = self._send_log(log_data)  # Capture the log ID
+        return PromptLog(log_id=log_id, api_key=self.promptgenio_api_key)  # Return a PromptLog instance
 
     def _send_log(self, data):
         try:
@@ -60,24 +63,3 @@ class PromptGenio:
 
     def clear_tags(self):
         self.tags.clear()
-
-    def add_additional_tags(self, additional_tags):
-        if not self.latest_log_id:
-            self.logger.error("No log ID available to add tags.")
-            return
-
-        url = f"https://promptgenio.com/api/prompt-logs/{self.latest_log_id}/tags"
-        data = {
-            "tags": additional_tags  # Expecting a list of dictionaries with key-value pairs
-        }
-
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.promptgenio_api_key}",
-                "Content-Type": "application/json"
-            }
-            response = requests.post(url, json=data, headers=headers)
-            response.raise_for_status()
-            self.logger.info("Additional tags added successfully.")
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Failed to add additional tags: {str(e)}")

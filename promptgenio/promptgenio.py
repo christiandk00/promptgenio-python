@@ -1,3 +1,8 @@
+import json
+import requests
+import logging
+from groq import Groq
+
 class PromptGenio:
     def __init__(self, groq_api_key, promptgenio_api_key, tags=None):
         self.client = Groq(api_key=groq_api_key)

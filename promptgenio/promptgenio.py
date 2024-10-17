@@ -10,11 +10,15 @@ class PromptGenio:
         self.webhook_url = "https://promptgenio.com/api/prompt-logs"
         self.promptgenio_api_key = promptgenio_api_key
         self.tags = tags or {}
+        self.latest_log = None
 
     def chat_completion(self, messages, **kwargs):
+        if self.latest_log:
+            self.latest_log.clear_tags()
+
         try:
             response = self.client.chat.completions.create(messages=messages, **kwargs)
-            self._log_success(messages, response)
+            self.latest_log = self._log_success(messages, response)
             return response
         except Exception as e:
             self._log_error(messages, str(e))
@@ -27,7 +31,9 @@ class PromptGenio:
             "response": response.model_dump(),
             "tags": self.tags
         }
-        self._send_log(log_data)
+
+        log_id = self._send_log(log_data)
+        return PromptLog(log_id=log_id, api_key=self.promptgenio_api_key)
 
     def _log_error(self, messages, error):
         log_data = {
@@ -36,7 +42,9 @@ class PromptGenio:
             "error": error,
             "tags": self.tags
         }
-        self._send_log(log_data)
+
+        log_id = self._send_log(log_data)
+        return PromptLog(log_id=log_id, api_key=self.promptgenio_api_key)
 
     def _send_log(self, data):
         try:
@@ -46,8 +54,10 @@ class PromptGenio:
             }
             response = requests.post(self.webhook_url, json=data, headers=headers)
             response.raise_for_status()
+            return response.json().get('id')
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Failed to send log: {str(e)}")
+            return None
 
     def add_tag(self, key, value):
         self.tags[key] = value
